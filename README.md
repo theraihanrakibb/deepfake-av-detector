@@ -2,10 +2,10 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Thesis-NWPU-blue" alt="NWPU Thesis"/>
-  <img src="https://img.shields.io/github/license/theraihanrakibb/M.Eng-Thesis-Multimodal-Deepfake-Audio-Visual-Temporal-Framework" alt="License"/>
-  <img src="https://img.shields.io/github/stars/theraihanrakibb/M.Eng-Thesis-Multimodal-Deepfake-Audio-Visual-Temporal-Framework" alt="Stars"/>
-  <img src="https://img.shields.io/github/forks/theraihanrakibb/M.Eng-Thesis-Multimodal-Deepfake-Audio-Visual-Temporal-Framework" alt="Forks"/>
-  <img src="https://img.shields.io/github/last-commit/theraihanrakibb/M.Eng-Thesis-Multimodal-Deepfake-Audio-Visual-Temporal-Framework" alt="Last Commit"/>
+  <img src="https://img.shields.io/github/license/theraihanrakibb/deepfake-av-detector" alt="License"/>
+  <img src="https://img.shields.io/github/stars/theraihanrakibb/deepfake-av-detector" alt="Stars"/>
+  <img src="https://img.shields.io/github/forks/theraihanrakibb/deepfake-av-detector" alt="Forks"/>
+  <img src="https://img.shields.io/github/last-commit/theraihanrakibb/deepfake-av-detector" alt="Last Commit"/>
   <img src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch"/>
   <img src="https://img.shields.io/badge/Dataset-WildDeepfake-orange" alt="WildDeepfake"/>
 </p>
@@ -72,7 +72,7 @@ pytest tests/ -v
 
 ```bash
 git clone <repository-url>
-cd M.Eng-Thesis-Multimodal-Deepfake-Audio-Visual-Temporal-Framework
+cd deepfake-av-detector
 
 # Install PyTorch with CUDA
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
@@ -411,6 +411,6 @@ A machine-readable `CITATION.cff` is also provided in this repository.
 
 ## Related Research
 
-- **B.Eng. Thesis:** [Design and Implementation of a Distributed Confidential Query Protocol for Spark](https://github.com/theraihanrakibb/B.Eng-Thesis-Design-and-Implementation-of-a-Distributed-Confidential-Query-Protocol-for-Spark) — Apache Spark + CKKS homomorphic encryption.
-- **NVFP4-DiT:** [4-bit Audio-Guided Video Diffusion Transformers](https://github.com/theraihanrakibb/NVFP4-DiT) (IEEE TNNLS, under review).
+- **B.Eng. Thesis:** [Design and Implementation of a Distributed Confidential Query Protocol for Spark](https://github.com/theraihanrakibb/spark-ckks-query) — Apache Spark + CKKS homomorphic encryption.
+- **NVFP4-DiT:** [4-bit Audio-Guided Video Diffusion Transformers](https://github.com/theraihanrakibb/nvfp4-dit) (IEEE TNNLS, under review).
 - **Profile & Portfolio:** [@theraihanrakibb](https://github.com/theraihanrakibb) · [Online Portfolio](https://theraihanrakibb.github.io/)
