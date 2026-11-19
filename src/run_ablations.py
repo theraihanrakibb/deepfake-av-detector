@@ -31,8 +31,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from data_loader.datasets import DeepfakeDataset, split_dataset
 from models.multimodal_model import MultimodalModel
-from evaluate import evaluate_model
-from train import (
+from evaluate_detectors import evaluate_model
+from train_detectors import (
     collect_video_files,
     train_multimodal_model,
     make_balanced_sampler,
@@ -187,10 +187,10 @@ def main():
     print(f"\nResults saved to {csv_path}")
     print(df.to_string(index=False))
 
-    # Generate comparison figure using thesis_viz for consistent styling
-    from thesis_viz import MODEL_COLORS, _color_for, _safe_value
+    # Generate comparison figure using plot_thesis_results for consistent styling
+    from plot_thesis_results import MODEL_COLORS, _color_for, _safe_value
 
-    # Capitalize column names for thesis_viz
+    # Capitalize column names for plot_thesis_results
     df_thesis = df.rename(columns={
         'accuracy': 'Accuracy',
         'precision': 'Precision',
@@ -199,7 +199,7 @@ def main():
         'auc': 'AUC',
     })
     df_thesis = df_thesis.rename(columns={'config': 'Model'})
-    # Add missing metric columns as NaN for thesis_viz compatibility
+    # Add missing metric columns as NaN for plot_thesis_results compatibility
     for col in ('Accuracy', 'Precision', 'Recall', 'F1', 'AUC'):
         if col not in df_thesis.columns:
             df_thesis[col] = float('nan')
@@ -209,8 +209,8 @@ def main():
         os.path.join(docs_dir, "ablation_results.csv"), index=False
     )
 
-    # Use thesis_viz for the standard plots
-    from thesis_viz import (
+    # Use plot_thesis_results for the standard plots
+    from plot_thesis_results import (
         performance_comparison as tv_performance,
         precision_recall_scatter,
     )
