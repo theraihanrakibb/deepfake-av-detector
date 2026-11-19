@@ -14,9 +14,9 @@
 
 [Read the thesis PDF](results/ddv_avti.pdf)
 
-**Author** [MD Rakibul Islam Raihan](https://github.com/theraihanrakibb)
+**Author:** [MD Rakibul Islam Raihan](https://github.com/theraihanrakibb)
 
-**Supervisor** Professor Zhang Peng
+**Supervisor:** Professor Zhang Peng
 
 ## Research
 
