@@ -8,9 +8,6 @@ from tqdm import tqdm
 import os
 import csv
 import argparse
-import json
-import random
-from pathlib import Path
 import numpy as np
 
 VIDEO_EXTENSIONS = ('.mp4', '.avi', '.mov')
@@ -249,7 +246,6 @@ def main():
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
-    random.seed(args.seed)
 
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -268,17 +264,10 @@ def main():
     use_val = (not args.no_val) and has_both_classes and len(video_files) >= 4
 
     if use_val:
-        ordered_paths, ordered_labels = zip(*sorted(zip(video_files, labels)))
-        train_paths, train_labels, val_paths, val_labels, test_paths, test_labels = split_dataset(
-            ordered_paths, ordered_labels, ratios=(0.7, 0.15, 0.15), seed=args.seed
+        train_paths, train_labels, val_paths, val_labels, _, _ = split_dataset(
+            video_files, labels, ratios=(0.7, 0.15, 0.15), seed=args.seed
         )
-        splits = {'train': list(zip(train_paths, train_labels)),
-                  'validation': list(zip(val_paths, val_labels)),
-                  'test': list(zip(test_paths, test_labels))}
-        manifest = Path('results/docs/video_split.json')
-        manifest.parent.mkdir(parents=True, exist_ok=True)
-        manifest.write_text(json.dumps(splits, indent=2))
-        print(f"Split: {len(train_paths)} train / {len(val_paths)} val / {len(test_paths)} test")
+        print(f"Split: {len(train_paths)} train / {len(val_paths)} val")
     else:
         train_paths, train_labels = video_files, labels
         val_paths, val_labels = [], []

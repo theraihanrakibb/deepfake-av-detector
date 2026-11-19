@@ -4,11 +4,12 @@ Thesis-quality visualization module for deepfake detection results.
 Generates publication-ready figures from the evaluation CSV. All charts are
 data-driven (no hardcoded values) and handle zero/NaN scores gracefully.
 
-Used by the exploratory evaluation commands:
+This is the single source of truth for thesis images. Used by:
+  - main.py --thesis
   - run_ablations.py (ablation_comparison.png)
-  - evaluate_cross_dataset.py
-  - evaluate_compression_robustness.py
-  - evaluate_detector_ensemble.py
+  - cross_dataset_eval.py
+  - compression_robustness.py
+  - ensemble.py
 """
 
 import os
@@ -533,7 +534,7 @@ def training_curves(log_csv_path: str, output_path: str):
     """
     Two-panel training curve: train/val loss + learning rate schedule.
     Generates a thesis-quality figure from the training_log.csv written by
-    train_detectors.py.
+    train.py.
     """
     if not os.path.exists(log_csv_path):
         return

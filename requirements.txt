@@ -1,9 +1,9 @@
-# Tested with Python 3.11 on Ada6000.
+# Deepfake Detection Framework - Dependencies
 
-# Install this PyTorch pair from the appropriate wheel index before installing
-# the rest of this file. The thesis run used the cu126 index.
-torch==2.7.1
-torchvision==0.22.1
+# Core ML Framework (auto-detects CPU/GPU)
+torch>=2.7.0
+torchvision>=0.22.0
+torchaudio>=2.7.0
 
 # Deep Learning Utilities
 timm>=0.9.0
@@ -12,9 +12,10 @@ pretrainedmodels>=0.7.4
 # Data Processing
 numpy>=1.24.0
 pandas>=2.0.0
+scipy>=1.10.0
 
 # Computer Vision
-opencv-python>=4.8.0,<5
+opencv-python>=4.8.0
 Pillow>=10.0.0
 
 # Audio Processing
@@ -34,5 +35,10 @@ seaborn>=0.13.0
 # Video Processing
 moviepy>=2.0.0
 
-# Test runner used by scripts/run_unit_tests.sh
-pytest>=8,<10
+# CLI Arguments (built-in, no need to install)
+# argparse
+
+# Notes:
+# - Install CUDA version: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+# - Install CPU version: pip install torch torchvision
+# - The model works with both CPU and GPU automatically

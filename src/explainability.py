@@ -9,14 +9,14 @@ understand which regions of the face (e.g., eyes, mouth, cheeks) the model
 finds most salient for its decision."
 
 Usage:
-    from generate_gradcam_heatmaps import GradCAMVisualizer
+    from explainability import GradCAMVisualizer
 
     visualizer = GradCAMVisualizer(model, device)
     heatmaps = visualizer.generate(video, audio)
     visualizer.save_overlay(heatmaps, frame_idx=0, output_path="gradcam_frame0.png")
 
 CLI:
-    python src/generate_gradcam_heatmaps.py --model_path results/weights/trained_model_multimodal_best.pth \
+    python src/explainability.py --model_path results/weights/trained_model_multimodal_best.pth \
         --video_path path/to/video.mp4 --output_dir results/images/gradcam
 """
 

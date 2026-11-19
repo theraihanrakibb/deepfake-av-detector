@@ -19,7 +19,7 @@ Requires: FFmpeg installed and on PATH. Install with:
   - Linux:    apt-get install ffmpeg
 
 Usage:
-    python src/evaluate_compression_robustness.py \
+    python src/compression_robustness.py \
         --model_path results/weights/trained_model_multimodal_best.pth \
         --data_dir data/ff_plus/c23 \
         --crf_values 23 40 45 \
@@ -41,8 +41,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from data_loader.datasets import DeepfakeDataset
 from models.multimodal_model import MultimodalModel
-from evaluate_detectors import evaluate_model
-from train_detectors import collect_video_files
+from evaluate import evaluate_model
+from train import collect_video_files
 
 
 def check_ffmpeg():
@@ -100,7 +100,7 @@ def load_model(model_path, mode, device, **model_kwargs):
     if mode == 'multimodal':
         model = MultimodalModel(pretrained=False, **model_kwargs)
     else:
-        from train_detectors import SimpleModel
+        from train import SimpleModel
         model = SimpleModel()
 
     if os.path.exists(model_path):

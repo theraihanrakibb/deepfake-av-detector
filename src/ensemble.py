@@ -11,15 +11,15 @@ artifacts, while the multimodal model may miss fine-grained spatial artifacts.
 
 Usage:
     # Equal-weight ensemble (quick):
-    python src/evaluate_detector_ensemble.py --data_dir data/custom --mode eval --weights 0.5 0.3 0.2
+    python src/ensemble.py --data_dir data/custom --mode eval --weights 0.5 0.3 0.2
 
     # Learn meta-classifier weights on validation data:
-    python src/evaluate_detector_ensemble.py --data_dir data/custom --mode train_meta --model_paths \
+    python src/ensemble.py --data_dir data/custom --mode train_meta --model_paths \
         results/weights/trained_model_multimodal_best.pth \
         results/weights/trained_model_mesonet_best.pth
 
 API:
-    from evaluate_detector_ensemble import EnsembleModel
+    from ensemble import EnsembleModel
     ensemble = EnsembleModel(models=[mm, meso], weights=[0.6, 0.4])
     preds = ensemble.predict(video, audio)
 """
@@ -40,8 +40,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models.multimodal_model import MultimodalModel
 from models.baselines import MesoNet, XceptionNet, LipSyncDetector
 from data_loader.datasets import DeepfakeDataset, split_dataset
-from evaluate_detectors import evaluate_model
-from train_detectors import collect_video_files, train_multimodal_model, make_balanced_sampler
+from evaluate import evaluate_model
+from train import collect_video_files, train_multimodal_model, make_balanced_sampler
 
 
 class EnsembleModel:

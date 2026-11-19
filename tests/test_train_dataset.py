@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath("src"))
 
-from train_detectors import create_dataset
+from train import create_dataset
 
 
 class TestTrainDataset(unittest.TestCase):
@@ -20,9 +20,9 @@ class TestTrainDataset(unittest.TestCase):
                 return [(path, [], ["sample_fake.mp4"])]
             return []
 
-        with patch("train_detectors.os.path.exists", return_value=True), \
-             patch("train_detectors.os.path.isdir", return_value=True), \
-             patch("train_detectors.os.walk", side_effect=fake_walk):
+        with patch("train.os.path.exists", return_value=True), \
+             patch("train.os.path.isdir", return_value=True), \
+             patch("train.os.walk", side_effect=fake_walk):
             dataset = create_dataset(data_dir)
 
         self.assertEqual(sorted(dataset.labels), [0, 1])

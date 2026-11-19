@@ -5,20 +5,20 @@ Loads a trained model and evaluates it on a DIFFERENT dataset to test
 generalization — the "leave-one-dataset-out" style evaluation.
 
 Example protocol:
-  1. Train on FF++:   python src/train_detectors.py --data_dir data/ff_plus/c23 --epochs 20
-  2. Test on WildDeepfake:  python src/evaluate_cross_dataset.py --eval_data_dir data/wilddeepfake
-  3. Test on DFDC:          python src/evaluate_cross_dataset.py --eval_data_dir data/dfdc
+  1. Train on FF++:   python src/train.py --data_dir data/ff_plus/c23 --epochs 20
+  2. Test on WildDeepfake:  python src/cross_dataset_eval.py --eval_data_dir data/wilddeepfake
+  3. Test on DFDC:          python src/cross_dataset_eval.py --eval_data_dir data/dfdc
 
 Results are saved to results/docs/cross_dataset_results.csv.
 
 Usage:
-    python src/evaluate_cross_dataset.py \
+    python src/cross_dataset_eval.py \
         --model_path results/weights/trained_model_multimodal_best.pth \
         --eval_data_dir data/wilddeepfake \
         --mode multimodal
 
     # Evaluate on multiple datasets at once:
-    python src/evaluate_cross_dataset.py \
+    python src/cross_dataset_eval.py \
         --eval_data_dir data/wilddeepfake data/dfdc \
         --mode multimodal
 """
@@ -34,8 +34,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from data_loader.datasets import DeepfakeDataset
 from models.multimodal_model import MultimodalModel
-from evaluate_detectors import evaluate_model
-from train_detectors import collect_video_files
+from evaluate import evaluate_model
+from train import collect_video_files
 
 
 def load_model(model_path, mode, device, **model_kwargs):
@@ -43,7 +43,7 @@ def load_model(model_path, mode, device, **model_kwargs):
     if mode == 'multimodal':
         model = MultimodalModel(pretrained=False, **model_kwargs)
     else:
-        from train_detectors import SimpleModel
+        from train import SimpleModel
         model = SimpleModel()
 
     if not os.path.exists(model_path):
