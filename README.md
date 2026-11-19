@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Dataset-WildDeepfake-orange" alt="WildDeepfake"/>
 </p>
 
-**M.Eng. thesis in Software Engineering, Northwestern Polytechnical University (2026)**
+**M.Eng. thesis in Software Engineering, Northwestern Polytechnical University (2027)**
 
 [Read the thesis PDF](results/ddv_avti.pdf)
 
