@@ -1,5 +1,15 @@
 # Detecting Deepfake Videos by a Multimodal Audio-Visual Framework with Temporal Inconsistencies
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Thesis-NWPU-blue" alt="NWPU Thesis"/>
+  <img src="https://img.shields.io/github/license/theraihanrakibb/deepfake-av-detector" alt="License"/>
+  <img src="https://img.shields.io/github/stars/theraihanrakibb/deepfake-av-detector" alt="Stars"/>
+  <img src="https://img.shields.io/github/forks/theraihanrakibb/deepfake-av-detector" alt="Forks"/>
+  <img src="https://img.shields.io/github/last-commit/theraihanrakibb/deepfake-av-detector" alt="Last Commit"/>
+  <img src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch"/>
+  <img src="https://img.shields.io/badge/Dataset-WildDeepfake-orange" alt="WildDeepfake"/>
+</p>
+
 **M.Eng. thesis in Software Engineering, Northwestern Polytechnical University (2026)**
 
 [Read the thesis PDF](results/ddv_avti.pdf)
