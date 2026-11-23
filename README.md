@@ -7,15 +7,15 @@
   <img src="https://img.shields.io/github/forks/theraihanrakibb/deepfake-av-detector" alt="Forks"/>
   <img src="https://img.shields.io/github/last-commit/theraihanrakibb/deepfake-av-detector" alt="Last Commit"/>
   <img src="https://img.shields.io/badge/PyTorch-2.7.1-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch 2.7.1"/>
-  <img src="https://img.shields.io/badge/Dataset-WildDeepfake%20subset-orange" alt="WildDeepfake subset"/>
-  <img src="https://img.shields.io/badge/Dataset-DigiFakeAV%20subset-blueviolet" alt="DigiFakeAV subset"/>
+  <img src="https://img.shields.io/badge/Dataset-WildDeepfake-orange" alt="WildDeepfake"/>
+  <img src="https://img.shields.io/badge/Dataset-DigiFakeAV-blueviolet" alt="DigiFakeAV"/>
 </p>
 
 **Author:** [MD Rakibul Islam Raihan](https://github.com/theraihanrakibb)<br>
 **Supervisor:** ZHANG PENG<br>
 **University:** Northwestern Polytechnical University, School of Software Engineering
 
-The detector combines RGB and log-FFT features, audio features, and a position-aware Transformer. The thesis compares an initial and an improved protocol on the same held-out clips within each dataset. The 110-clip WildDeepfake collection uses a silence fallback. The 300-clip DigiFakeAV subset contains audio.
+The detector combines RGB and log-FFT features, audio features, and a position-aware Transformer. The thesis compares an initial and an improved protocol on the same held-out clips within each dataset. The 110-clip WildDeepfake collection uses a silence fallback. The 300-clip DigiFakeAV collection contains audio.
 
 ## Verified results
 
@@ -24,7 +24,7 @@ Each reported full experiment uses four seeds and a 20-epoch budget. Experiment 
 - **WildDeepfake:** Multimodal mean ROC AUC rose from 0.4844 to 0.8242. Ensemble mean AUC rose from 0.6641 to 0.8398.
 - **DigiFakeAV:** Multimodal mean ROC AUC rose from 0.5300 to 0.7239. Ensemble mean AUC rose from 0.6894 to 0.7189.
 
-The results describe the evaluated subsets. Frame shuffling preserved AUC in every improved seed on both datasets, and zeroing the DigiFakeAV audio features changed the mean AUC from 0.7239 to 0.7244. The ablation series uses separately fitted configurations.
+The results describe the evaluated clips. Frame shuffling preserved AUC in every improved seed on both datasets, and zeroing the DigiFakeAV audio features changed the mean AUC from 0.7239 to 0.7244. The ablation series uses separately fitted configurations.
 
 - [Named thesis PDF](results/ddv_avti.pdf)
 
