@@ -15,6 +15,7 @@ keywords:
   - attention-fusion
   - grad-cam
   - wilddeepfake
+  - digifakeav
 license: MIT
 repository-code: "https://github.com/theraihanrakibb/deepfake-av-detector"
 version: "1.5.0"

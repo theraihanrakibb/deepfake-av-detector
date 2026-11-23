@@ -6,8 +6,9 @@
   <img src="https://img.shields.io/github/stars/theraihanrakibb/deepfake-av-detector" alt="Stars"/>
   <img src="https://img.shields.io/github/forks/theraihanrakibb/deepfake-av-detector" alt="Forks"/>
   <img src="https://img.shields.io/github/last-commit/theraihanrakibb/deepfake-av-detector" alt="Last Commit"/>
-  <img src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch"/>
-  <img src="https://img.shields.io/badge/Dataset-WildDeepfake-orange" alt="WildDeepfake"/>
+  <img src="https://img.shields.io/badge/PyTorch-2.7.1-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch 2.7.1"/>
+  <img src="https://img.shields.io/badge/Dataset-WildDeepfake%20subset-orange" alt="WildDeepfake subset"/>
+  <img src="https://img.shields.io/badge/Dataset-DigiFakeAV%20subset-blueviolet" alt="DigiFakeAV subset"/>
 </p>
 
 **Author:** [MD Rakibul Islam Raihan](https://github.com/theraihanrakibb)<br>
