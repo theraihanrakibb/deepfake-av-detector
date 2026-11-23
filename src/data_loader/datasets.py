@@ -1,33 +1,44 @@
 import os
 import json
 import random
+from pathlib import Path
+
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
-import torchvision.transforms.functional as TF
 import numpy as np
 import pandas as pd
+
 from .video_processor import VideoProcessor, extract_frames, preprocess_frames
 from .audio_processor import AudioProcessor, extract_audio_features
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def load_split_manifest(path):
+    """Load train/validation/test pairs from a JSON split manifest."""
+    raw = json.loads(Path(path).read_text())
+    data = raw.get("splits", raw)
+    result = {}
+    for split, records in data.items():
+        pairs = []
+        for record in records:
+            if isinstance(record, dict):
+                video_path, label = record["path"], int(record["label"])
+            else:
+                video_path, label = record[0], int(record[1])
+            candidate = Path(video_path)
+            if not candidate.is_absolute():
+                candidate = PROJECT_ROOT / candidate
+            pairs.append((str(candidate.resolve()), label))
+        result[split] = pairs
+    return result
 
 
 def split_dataset(video_paths, labels, ratios=(0.7, 0.15, 0.15), seed=42):
     """
     Split video paths and labels into train / val / test sets at the video
-    level (not frame level), stratified by label.
-
-    This prevents data leakage: every frame from a given video lives in
-    exactly one split (title report §3.3.1.2).
-
-    Args:
-        video_paths: list of video file paths.
-        labels: list of integer labels aligned with video_paths.
-        ratios: (train, val, test) fractions. Must sum to ~1.0.
-        seed: reproducibility seed.
-
-    Returns:
-        Six lists: (train_paths, train_labels, val_paths, val_labels,
-                    test_paths, test_labels).
+    level, stratified by label. Every frame from a given video stays in one split.
     """
     if len(video_paths) != len(labels):
         raise ValueError("video_paths and labels must have the same length")
@@ -90,22 +101,22 @@ def _audio_to_tensor(audio_features):
     return audio_tensor
 
 class DeepfakeDataset(Dataset):
-    """Base dataset class for deepfake detection"""
-    def __init__(self, video_paths, labels, num_frames=30, transform=None, augment=False):
-        """
-        Args:
-            augment: If True, apply frame-consistent visual augmentation
-                (horizontal flip, ±5° rotation, brightness/contrast jitter).
-                The same parameters are applied to every frame in a clip so
-                temporal coherence is preserved (title report §3.3.1.2).
-                Audio and frequency inputs are never augmented.
-        """
+    """Base dataset class for deepfake detection."""
+
+    def __init__(self, video_paths, labels, num_frames=30, transform=None,
+                 augment=False, require_audio=False, skip_face_crop=False):
         self.video_paths = video_paths
         self.labels = labels
         self.num_frames = num_frames
         self.augment = augment
+        self.require_audio = require_audio
+        self.skip_face_crop = skip_face_crop
         self.video_processor = VideoProcessor()
         self.audio_processor = AudioProcessor()
+        feature_dim = (self.audio_processor.n_mfcc if self.audio_processor.use_mfcc
+                       else self.audio_processor.n_mels)
+        time_dim = 1 + self.audio_processor.target_samples // self.audio_processor.hop_length
+        self.audio_shape = (1, feature_dim, time_dim)
 
         if transform is None:
             self.transform = transforms.Compose([
@@ -118,45 +129,36 @@ class DeepfakeDataset(Dataset):
     def __len__(self):
         return len(self.video_paths)
 
+    # shortcut: colour and rotation need raw frames, upgrade when transform order changes.
     def _augment_clip(self, video_tensor):
-        """Apply one set of random params to every frame in the clip."""
-        flip = random.random() < 0.5
-        angle = random.uniform(-5.0, 5.0)
-        brightness = random.uniform(0.9, 1.1)
-        contrast = random.uniform(0.9, 1.1)
-        for i in range(video_tensor.shape[0]):
-            frame = video_tensor[i]
-            if flip:
-                frame = TF.hflip(frame)
-            frame = TF.rotate(frame, angle)
-            frame = TF.adjust_brightness(frame, brightness)
-            frame = TF.adjust_contrast(frame, contrast)
-            video_tensor[i] = frame
+        """Apply one random horizontal flip to the whole clip."""
+        if random.random() < 0.5:
+            return torch.flip(video_tensor, dims=[-1])
         return video_tensor
 
     def __getitem__(self, idx):
         video_path = self.video_paths[idx]
         label = self.labels[idx]
 
-        # Process video
         frames = self.video_processor.get_frames(video_path, self.num_frames)
-
-        # Ensure frames are not empty
         if not frames:
+            if self.require_audio:
+                raise ValueError(f"Unreadable video in audio-required dataset: {video_path}")
             return {
                 "video": torch.zeros((self.num_frames, 3, 224, 224)),
-                "audio": torch.zeros((1, 128, 1)), # Empty spectrogram
+                "audio": torch.zeros(self.audio_shape),
                 "label": torch.tensor(label, dtype=torch.float)
             }
 
-        face_frames = [self.video_processor.crop_face(frame) for frame in frames]
+        face_frames = [self.video_processor.crop_face(frame, skip=self.skip_face_crop)
+                       for frame in frames]
         video_tensor = torch.stack([self.transform(frame) for frame in face_frames])
-
         if self.augment:
             video_tensor = self._augment_clip(video_tensor)
 
-        # Process audio (never augmented per title report §3.3.1.2)
         audio_waveform = self.audio_processor.extract_audio(video_path)
+        if self.require_audio and float(np.max(np.abs(audio_waveform))) < 1e-4:
+            raise ValueError(f"Silent audio in audio-required dataset: {video_path}")
         mel_spectrogram = self.audio_processor.to_mel_spectrogram(audio_waveform)
         audio_tensor = torch.from_numpy(mel_spectrogram).float().unsqueeze(0)
 

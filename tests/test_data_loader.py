@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 import os
 import numpy as np
 import torch
@@ -74,6 +75,26 @@ class TestDataLoader(unittest.TestCase):
         self.assertIsInstance(sample["label"], torch.Tensor)
         self.assertEqual(sample["label"], 0)
         mock_extract_audio.assert_called_once_with(self.video_path)
+
+    @patch('src.data_loader.audio_processor.subprocess.run')
+    @patch('src.data_loader.audio_processor._ffmpeg_executable', return_value='ffmpeg')
+    def test_extract_audio_uses_ffmpeg_pcm(self, mock_ffmpeg, mock_run):
+        waveform = np.linspace(-0.5, 0.5, 8000, dtype='<f4')
+        mock_run.return_value = SimpleNamespace(stdout=waveform.tobytes())
+        audio = self.audio_processor.extract_audio(self.video_path)
+        self.assertEqual(len(audio), self.audio_processor.target_samples)
+        self.assertGreater(float(np.max(np.abs(audio))), 0.4)
+        self.assertIn('f32le', mock_run.call_args.args[0])
+
+    @patch('src.data_loader.datasets.VideoProcessor.get_frames')
+    def test_fallback_audio_shape(self, mock_get_frames):
+        mock_get_frames.return_value = []
+        dataset = DeepfakeDataset(video_paths=[self.video_path], labels=[0])
+        sample = dataset[0]
+        feature_dim = (self.audio_processor.n_mfcc if self.audio_processor.use_mfcc
+                       else self.audio_processor.n_mels)
+        time_dim = 1 + self.audio_processor.target_samples // self.audio_processor.hop_length
+        self.assertEqual(tuple(sample["audio"].shape), (1, feature_dim, time_dim))
 
 
 if __name__ == '__main__':

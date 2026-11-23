@@ -1,29 +1,34 @@
+import os
+
+os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
-from data_loader.datasets import DeepfakeDataset, split_dataset
+from data_loader.datasets import DeepfakeDataset, load_split_manifest, split_dataset
 from models.multimodal_model import MultimodalModel
 from models.baselines import MesoNet, XceptionNet, LipSyncDetector
 from tqdm import tqdm
-import os
 import csv
 import argparse
+import json
+import random
+from pathlib import Path
 import numpy as np
+from sklearn.metrics import roc_auc_score
 
 VIDEO_EXTENSIONS = ('.mp4', '.avi', '.mov')
 
 class SimpleModel(nn.Module):
-    """
-    Simple audio-only model for quick testing and validation
-    """
-    def __init__(self, input_dim=128*157, num_classes=1):
+    """Simple audio-only model that returns one logit per clip."""
+    def __init__(self, input_dim=40*157, num_classes=1):
         super(SimpleModel, self).__init__()
+        self.output_type = 'logits'
         self.classifier = nn.Sequential(
             nn.Linear(input_dim, 256),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(256, num_classes),
-            nn.Sigmoid()
+            nn.Linear(256, num_classes)
         )
 
     def forward(self, audio):
@@ -45,6 +50,7 @@ def train_simple_model(model, data_loader, optimizer, loss_fn, device):
         outputs = model(audio)
         loss = loss_fn(outputs, labels.unsqueeze(1).float())
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         total_loss += loss.item()
 
@@ -64,6 +70,7 @@ def train_multimodal_model(model, data_loader, optimizer, loss_fn, device):
         outputs = model(video, audio)
         loss = loss_fn(outputs, labels.unsqueeze(1).float())
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         total_loss += loss.item()
 
@@ -102,15 +109,18 @@ def train_baseline_model(model, data_loader, optimizer, loss_fn, device, model_t
 
         loss = loss_fn(outputs, labels.unsqueeze(1).float())
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         total_loss += loss.item()
 
     return total_loss / max(len(data_loader), 1)
 
 def validate_model(model, data_loader, loss_fn, device, mode='multimodal'):
-    """Compute average validation loss without backprop."""
+    """Return validation loss and threshold-independent ranking quality."""
     model.eval()
     total_loss = 0
+    all_labels = []
+    all_scores = []
     with torch.no_grad():
         for batch in tqdm(data_loader, desc="Validating", leave=False):
             labels = batch["label"].to(device)
@@ -129,12 +139,15 @@ def validate_model(model, data_loader, loss_fn, device, mode='multimodal'):
             else:  # simple/audio
                 audio = batch["audio"].to(device)
                 outputs = model(audio)
-            # Ensure output is (batch, 1) to match labels.unsqueeze(1)
             if outputs.dim() == 1:
                 outputs = outputs.unsqueeze(1)
             loss = loss_fn(outputs, labels.unsqueeze(1).float())
             total_loss += loss.item()
-    return total_loss / max(len(data_loader), 1)
+            all_labels.extend(labels.cpu().numpy().astype(int).tolist())
+            all_scores.extend(torch.sigmoid(outputs).squeeze(-1).cpu().numpy().tolist())
+    auc = (roc_auc_score(all_labels, all_scores)
+           if len(set(all_labels)) == 2 else float('nan'))
+    return total_loss / max(len(data_loader), 1), auc
 
 def make_balanced_sampler(labels):
     """
@@ -211,132 +224,165 @@ def create_dataset(data_dir, max_samples=None):
 def _init_log(log_path):
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     with open(log_path, 'w', newline='') as f:
-        csv.writer(f).writerow(["epoch", "train_loss", "val_loss", "learning_rate"])
+        csv.writer(f).writerow(["epoch", "train_loss", "val_loss", "val_auc", "learning_rate"])
 
-def _log_epoch(log_path, epoch, train_loss, val_loss, lr):
+
+def _log_epoch(log_path, epoch, train_loss, val_loss, lr, val_auc=None):
     val_str = f"{val_loss:.6f}" if val_loss is not None else ""
+    auc_str = f"{val_auc:.6f}" if val_auc is not None and np.isfinite(val_auc) else ""
     with open(log_path, 'a', newline='') as f:
-        csv.writer(f).writerow([epoch, f"{train_loss:.6f}", val_str, f"{lr:.6e}"])
+        csv.writer(f).writerow([epoch, f"{train_loss:.6f}", val_str, auc_str, f"{lr:.6e}"])
 
 def main():
     parser = argparse.ArgumentParser(description='Deepfake Detection Training')
     parser.add_argument('--mode', type=str, default='multimodal',
                        choices=['multimodal', 'simple', 'audio', 'mesonet', 'xceptionnet', 'lipsync', 'all'],
-                       help='Training mode: multimodal, simple/audio, mesonet, xceptionnet, lipsync, or all (trains every model)')
-    parser.add_argument('--data_dir', type=str, default='tests/test_data',
-                       help='Directory containing training data')
-    parser.add_argument('--batch_size', type=int, default=2,
-                       help='Batch size for training')
-    parser.add_argument('--epochs', type=int, default=3,
-                       help='Number of training epochs (committee recommends 20+ for real data)')
-    parser.add_argument('--lr', type=float, default=1e-4,
-                       help='Learning rate')
-    parser.add_argument('--max_samples', type=int, default=None,
-                       help='Maximum number of samples to use (for quick testing)')
-    parser.add_argument('--pretrained', action='store_true',
+                       help='Training mode: multimodal, simple/audio, mesonet, xceptionnet, lipsync, or all')
+    parser.add_argument('--data_dir', type=str, default='tests/test_data')
+    parser.add_argument('--split-manifest', type=Path)
+    parser.add_argument('--output-dir', type=Path, default=Path('results/2026-11-22'))
+    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--epochs', type=int, default=20)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--max_samples', type=int, default=None)
+    parser.add_argument('--pretrained', dest='pretrained', action='store_true', default=True,
                        help='Use pretrained visual backbones when available')
-    parser.add_argument('--patience', type=int, default=5,
-                       help='Early stopping patience (epochs without val loss improvement)')
-    parser.add_argument('--no_val', action='store_true',
-                       help='Skip validation split and early stopping (smoke test mode)')
-    parser.add_argument('--seed', type=int, default=42,
-                       help='Random seed for reproducible splits')
+    parser.add_argument('--no-pretrained', dest='pretrained', action='store_false',
+                       help='Train visual backbones from scratch')
+    parser.add_argument('--require-audio', action='store_true')
+    parser.add_argument('--skip-face-crop', action='store_true')
+    parser.add_argument('--patience', type=int, default=5)
+    parser.add_argument('--no_val', action='store_true')
+    parser.add_argument('--class-weighted-loss', action='store_true')
+    parser.add_argument('--seed', type=int, default=42)
 
     args = parser.parse_args()
-
+    args.output_dir.mkdir(parents=True, exist_ok=True)
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
+    random.seed(args.seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
-    # Set device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     print(f"Training mode: {args.mode}")
 
-    # Collect video files and labels
-    video_files, labels = collect_video_files(args.data_dir, args.max_samples)
-    if not video_files:
-        print("No video files found.")
-        return
-
-    # Determine whether we have both classes (needed for stratified split
-    # and balanced sampling).
-    has_both_classes = len(set(int(l) for l in labels)) == 2
-    use_val = (not args.no_val) and has_both_classes and len(video_files) >= 4
-
-    if use_val:
-        train_paths, train_labels, val_paths, val_labels, _, _ = split_dataset(
-            video_files, labels, ratios=(0.7, 0.15, 0.15), seed=args.seed
-        )
-        print(f"Split: {len(train_paths)} train / {len(val_paths)} val")
+    if args.split_manifest:
+        manifest_splits = load_split_manifest(args.split_manifest)
+        train_pairs = manifest_splits['train']
+        val_pairs = manifest_splits.get('validation', manifest_splits.get('val', []))
+        test_pairs = manifest_splits['test']
+        split_records = {
+            'train': [[path, label] for path, label in train_pairs],
+            'validation': [[path, label] for path, label in val_pairs],
+            'test': [[path, label] for path, label in test_pairs],
+        }
+        (args.output_dir / 'split_used.json').write_text(json.dumps(split_records, indent=2))
+        train_paths, train_labels = map(list, zip(*train_pairs))
+        val_paths, val_labels = map(list, zip(*val_pairs)) if val_pairs else ([], [])
+        test_paths, test_labels = map(list, zip(*test_pairs))
+        video_files = train_paths + val_paths + test_paths
+        has_both_classes = len(set(int(label) for label in train_labels)) == 2
+        use_val = bool(val_pairs) and not args.no_val
+        print(f"Manifest split: {len(train_paths)} train / {len(val_paths)} val / {len(test_paths)} test")
     else:
-        train_paths, train_labels = video_files, labels
-        val_paths, val_labels = [], []
-        if not has_both_classes:
-            print("Only one class present - skipping validation and balanced sampling.")
+        video_files, labels = collect_video_files(args.data_dir, args.max_samples)
+        if not video_files:
+            print('No video files found.')
+            return
+        has_both_classes = len(set(int(label) for label in labels)) == 2
+        use_val = (not args.no_val) and has_both_classes and len(video_files) >= 4
+        if use_val:
+            ordered_paths, ordered_labels = zip(*sorted(zip(video_files, labels)))
+            train_paths, train_labels, val_paths, val_labels, test_paths, test_labels = split_dataset(
+                ordered_paths, ordered_labels, ratios=(0.7, 0.15, 0.15), seed=args.seed
+            )
+            split_records = {
+                'train': list(zip(train_paths, train_labels)),
+                'validation': list(zip(val_paths, val_labels)),
+                'test': list(zip(test_paths, test_labels)),
+            }
+            (args.output_dir / 'split_used.json').write_text(json.dumps(split_records, indent=2))
+            print(f"Split: {len(train_paths)} train / {len(val_paths)} val / {len(test_paths)} test")
         else:
-            print("Too few samples for a validation split - training on all data.")
+            train_paths, train_labels = video_files, labels
+            val_paths, val_labels = [], []
+            if not has_both_classes:
+                print('Only one class present - skipping validation and balanced sampling.')
+            else:
+                print('Too few samples for a validation split - training on all data.')
 
-    # Build datasets (augmentation only on the training split)
-    train_dataset = DeepfakeDataset(video_paths=train_paths, labels=train_labels, augment=True)
+    dataset_kwargs = dict(require_audio=args.require_audio,
+                          skip_face_crop=args.skip_face_crop)
+    train_dataset = DeepfakeDataset(video_paths=train_paths, labels=train_labels,
+                                    augment=True, **dataset_kwargs)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
                               sampler=make_balanced_sampler(train_labels) if has_both_classes else None,
                               shuffle=(not has_both_classes))
 
     val_loader = None
-    if val_paths:
-        val_dataset = DeepfakeDataset(video_paths=val_paths, labels=val_labels, augment=False)
+    if use_val and val_paths:
+        val_dataset = DeepfakeDataset(video_paths=val_paths, labels=val_labels,
+                                      augment=False, **dataset_kwargs)
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
-    # Determine which models to train
-    if args.mode == 'all':
-        modes_to_train = ['multimodal', 'mesonet', 'xceptionnet', 'lipsync']
-    else:
-        modes_to_train = [args.mode]
+    modes_to_train = ['multimodal', 'mesonet', 'xceptionnet', 'lipsync'] if args.mode == 'all' else [args.mode]
+    # shortcut: Xception weights are unavailable offline, upgrade when cached.
+    xception_pretrained = args.pretrained and (Path(torch.hub.get_dir()) / 'checkpoints' / 'xception-43020ad28.pth').is_file()
 
     for current_mode in modes_to_train:
         if len(modes_to_train) > 1:
-            print(f"\n{'='*60}")
-            print(f"Training model: {current_mode}")
-            print(f"{'='*60}")
+            print(f"\n{'='*60}\nTraining model: {current_mode}\n{'='*60}")
 
-        # Create model based on mode
         if current_mode == 'multimodal':
             model = MultimodalModel(pretrained=args.pretrained).to(device)
             train_func = train_multimodal_model
-            print("Using MultimodalModel (video + audio)")
         elif current_mode == 'mesonet':
             model = MesoNet().to(device)
             train_func = lambda m, dl, opt, lf, dev: train_baseline_model(m, dl, opt, lf, dev, 'mesonet')
-            print("Using MesoNet (visual-only baseline)")
         elif current_mode == 'xceptionnet':
-            model = XceptionNet(pretrained=False).to(device)
+            model = XceptionNet(pretrained=xception_pretrained).to(device)
             train_func = lambda m, dl, opt, lf, dev: train_baseline_model(m, dl, opt, lf, dev, 'xceptionnet')
-            print("Using XceptionNet (visual-only baseline)")
         elif current_mode == 'lipsync':
             model = LipSyncDetector().to(device)
             train_func = lambda m, dl, opt, lf, dev: train_baseline_model(m, dl, opt, lf, dev, 'lipsync')
-            print("Using LipSyncDetector (audio-visual baseline)")
-        else:  # simple or audio mode
+        else:
             model = SimpleModel().to(device)
             train_func = train_simple_model
-            print("Using SimpleModel (audio-only)")
+        print(f"Using {current_mode} ({sum(p.numel() for p in model.parameters()):,} parameters)")
 
-        # Loss, optimizer, scheduler (re-created per model)
-        loss_fn = nn.BCELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+        pos_weight = None
+        if args.class_weighted_loss:
+            counts = np.bincount(np.asarray(train_labels, dtype=int), minlength=2)
+            pos_weight = torch.tensor(
+                [counts[0] / max(counts[1], 1)], dtype=torch.float32, device=device
+            )
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
 
-        # Logging — separate log per model when training 'all'
         log_suffix = f"_{current_mode}" if len(modes_to_train) > 1 else ""
-        log_path = os.path.join("results", "docs", f"training_log{log_suffix}.csv")
-        _init_log(log_path)
+        log_path = args.output_dir / f"training_log{log_suffix}.csv"
+        _init_log(str(log_path))
         print(f"Training log: {log_path}")
 
-        # Training loop with early stopping
-        weights_dir = os.path.join("results", "weights")
-        os.makedirs(weights_dir, exist_ok=True)
-        best_ckpt_path = os.path.join(weights_dir, f"trained_model_{current_mode}_best.pth")
-        best_val_loss = float('inf')
+        weights_dir = args.output_dir / 'weights'
+        weights_dir.mkdir(parents=True, exist_ok=True)
+        best_ckpt_path = weights_dir / f"trained_model_{current_mode}_best.pth"
+        metadata = {
+            'mode': current_mode,
+            'output_type': 'logits',
+            'pretrained': args.pretrained if current_mode != 'xceptionnet' else xception_pretrained,
+            'seed': args.seed,
+            'require_audio': args.require_audio,
+            'skip_face_crop': args.skip_face_crop,
+            'split_manifest': str(args.split_manifest) if args.split_manifest else None,
+            'class_weighted_loss': args.class_weighted_loss,
+            'selection_metric': 'validation_auc',
+        }
+        best_val_score = -float('inf')
         patience_counter = 0
         last_train_loss = float('nan')
 
@@ -347,48 +393,42 @@ def main():
             current_lr = scheduler.get_last_lr()[0]
 
             if val_loader is not None:
-                val_loss = validate_model(model, val_loader, loss_fn, device, mode=current_mode)
-                print(f"Train loss: {train_loss:.4f} | Val loss: {val_loss:.4f} | LR: {current_lr:.2e}")
-                _log_epoch(log_path, epoch + 1, train_loss, val_loss, current_lr)
-
-                if val_loss < best_val_loss - 1e-6:
-                    best_val_loss = val_loss
+                val_loss, val_auc = validate_model(model, val_loader, loss_fn, device, mode=current_mode)
+                selection_score = val_auc if np.isfinite(val_auc) else -val_loss
+                print(f"Train loss: {train_loss:.4f} | Val loss: {val_loss:.4f} | "
+                      f"Val AUC: {val_auc:.4f} | LR: {current_lr:.2e}")
+                _log_epoch(str(log_path), epoch + 1, train_loss, val_loss, current_lr, val_auc)
+                if selection_score > best_val_score + 1e-6:
+                    best_val_score = selection_score
                     patience_counter = 0
                     torch.save({
                         'model_state_dict': model.state_dict(),
-                        'mode': current_mode,
+                        **metadata,
                         'epoch': epoch + 1,
                         'train_loss': train_loss,
                         'val_loss': val_loss,
-                    }, best_ckpt_path)
-                    print(f"  Saved best checkpoint (val_loss={val_loss:.4f})")
+                        'val_auc': val_auc,
+                    }, str(best_ckpt_path))
                 else:
                     patience_counter += 1
-                    print(f"  No improvement ({patience_counter}/{args.patience})")
                     if patience_counter >= args.patience:
                         print(f"Early stopping at epoch {epoch+1}")
                         break
             else:
                 print(f"Train loss: {train_loss:.4f} | LR: {current_lr:.2e}")
-                _log_epoch(log_path, epoch + 1, train_loss, None, current_lr)
-
+                _log_epoch(str(log_path), epoch + 1, train_loss, None, current_lr)
             scheduler.step()
 
-        print(f"\nTraining completed for {current_mode}!")
-
-        # Save final model
-        model_save_path = os.path.join(weights_dir, f"trained_model_{current_mode}.pth")
+        model_save_path = weights_dir / f"trained_model_{current_mode}.pth"
         torch.save({
             'model_state_dict': model.state_dict(),
-            'mode': current_mode,
+            **metadata,
             'epochs': args.epochs,
             'loss': last_train_loss,
-        }, model_save_path)
+        }, str(model_save_path))
         print(f"Final model saved to {model_save_path}")
-        if os.path.exists(best_ckpt_path):
+        if best_ckpt_path.exists():
             print(f"Best checkpoint saved to {best_ckpt_path}")
-
-        # Free GPU memory before next model
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 

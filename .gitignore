@@ -36,12 +36,16 @@ ENV/
 # CodeBuddy / Qwen Code
 .qwen/
 .codebuddy/
+.agents/
 
 # Pytest
 .pytest_cache/
 
-# Results (generate on demand — large files)
-results/
+# Local working files and curated public results
+/local/
+/logs/
+/results/*
+!/results/ddv_avti.pdf
 
 # Data (download separately — large files)
 data/

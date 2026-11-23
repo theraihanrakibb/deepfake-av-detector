@@ -11,15 +11,15 @@ artifacts, while the multimodal model may miss fine-grained spatial artifacts.
 
 Usage:
     # Equal-weight ensemble (quick):
-    python src/ensemble.py --data_dir data/custom --mode eval --weights 0.5 0.3 0.2
+    python src/evaluate_detector_ensemble.py --data_dir data/custom --mode eval --weights 0.5 0.3 0.2
 
     # Learn meta-classifier weights on validation data:
-    python src/ensemble.py --data_dir data/custom --mode train_meta --model_paths \
+    python src/evaluate_detector_ensemble.py --data_dir data/custom --mode train_meta --model_paths \
         results/weights/trained_model_multimodal_best.pth \
         results/weights/trained_model_mesonet_best.pth
 
 API:
-    from ensemble import EnsembleModel
+    from evaluate_detector_ensemble import EnsembleModel
     ensemble = EnsembleModel(models=[mm, meso], weights=[0.6, 0.4])
     preds = ensemble.predict(video, audio)
 """
@@ -40,8 +40,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models.multimodal_model import MultimodalModel
 from models.baselines import MesoNet, XceptionNet, LipSyncDetector
 from data_loader.datasets import DeepfakeDataset, split_dataset
-from evaluate import evaluate_model
-from train import collect_video_files, train_multimodal_model, make_balanced_sampler
+from evaluate_detectors import evaluate_model
+from train_detectors import collect_video_files, train_multimodal_model, make_balanced_sampler
 
 
 class EnsembleModel:
@@ -88,6 +88,8 @@ class EnsembleModel:
                     out = model.process_video(video.to(device))
                     if isinstance(out, tuple):
                         out = out[0]
+                if getattr(model, 'output_type', 'sigmoid') == 'logits':
+                    out = torch.sigmoid(out)
                 scores.append(out.cpu().numpy().flatten())
         scores = np.array(scores)  # (num_models, batch)
 
@@ -157,6 +159,8 @@ def train_meta_classifier(models, val_loader, device):
                     out = model.process_video(video)
                     if isinstance(out, tuple):
                         out = out[0]
+                if getattr(model, 'output_type', 'sigmoid') == 'logits':
+                    out = torch.sigmoid(out)
                 per_model_scores.append(out.cpu().numpy().flatten())
 
         features = np.array(per_model_scores).T  # (batch, num_models)
@@ -197,10 +201,15 @@ def main():
     parser.add_argument('--epochs', type=int, default=5,
                        help='Training epochs if no checkpoint exists for a model')
     parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--pretrained', action='store_true')
+    parser.add_argument('--pretrained', dest='pretrained', action='store_true', default=True)
+    parser.add_argument('--no-pretrained', dest='pretrained', action='store_false')
+    parser.add_argument('--require-audio', action='store_true')
+    parser.add_argument('--skip-face-crop', action='store_true')
     parser.add_argument('--max_samples', type=int, default=None)
     parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()
+    dataset_kwargs = dict(require_audio=args.require_audio,
+                          skip_face_crop=args.skip_face_crop)
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -233,9 +242,10 @@ def main():
         ckpt = torch.load(mm_ckpt, map_location=device, weights_only=False)
         try:
             mm.load_state_dict(ckpt.get('model_state_dict', ckpt))
-            print("Loaded MultimodalModel checkpoint")
+            mm.output_type = ckpt.get('output_type', 'sigmoid')
+            print('Loaded MultimodalModel checkpoint')
         except RuntimeError as e:
-            print(f"MultimodalModel checkpoint load failed: {e}")
+            print(f'MultimodalModel checkpoint load failed: {e}')
     models.append(mm)
 
     # MesoNet
@@ -244,22 +254,21 @@ def main():
 
     # XceptionNet
     try:
-        xcept = XceptionNet(pretrained=False).to(device)
+        xcept = XceptionNet(pretrained=args.pretrained).to(device)
         models.append(xcept)
     except Exception as e:
-        print(f"Could not create XceptionNet: {e}")
+        print(f'Could not create XceptionNet: {e}')
         model_names = model_names[:2]
 
     print(f"Ensemble: {len(models)} models ({', '.join(model_names[:len(models)])})")
 
-    # Optionally train models that don't have checkpoints
     if args.epochs > 0 and has_both_classes:
-        train_dataset = DeepfakeDataset(train_paths, train_labels, augment=True)
+        train_dataset = DeepfakeDataset(train_paths, train_labels, augment=True, **dataset_kwargs)
         train_loader = DataLoader(
             train_dataset, batch_size=args.batch_size,
             sampler=make_balanced_sampler(train_labels),
         )
-        loss_fn = nn.BCELoss()
+        loss_fn = nn.BCEWithLogitsLoss()
 
         for i, (model, name) in enumerate(zip(models, model_names)):
             if isinstance(model, MultimodalModel):
@@ -271,7 +280,7 @@ def main():
 
     # Build ensemble
     if args.mode == 'train_meta' and val_paths:
-        val_dataset = DeepfakeDataset(val_paths, val_labels, augment=False)
+        val_dataset = DeepfakeDataset(val_paths, val_labels, augment=False, **dataset_kwargs)
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
         print("\nTraining meta-classifier on validation data...")
         meta = train_meta_classifier(models, val_loader, device)
@@ -286,7 +295,7 @@ def main():
 
     # Evaluate on test set
     print(f"\n--- Evaluating ensemble on test set ({len(test_paths)} samples) ---")
-    test_dataset = DeepfakeDataset(test_paths, test_labels, augment=False)
+    test_dataset = DeepfakeDataset(test_paths, test_labels, augment=False, **dataset_kwargs)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
     # Evaluate individual models for comparison

@@ -22,7 +22,17 @@ class TestModels(unittest.TestCase):
         model = TemporalStream(input_dim=visual_feature_dim)
         dummy_input = torch.randn(2, 30, visual_feature_dim)
         output = model(dummy_input)
-        self.assertEqual(output.shape, (2, visual_feature_dim))
+        self.assertEqual(output.shape, (2, 512))
+
+    def test_temporal_stream_uses_frame_order(self):
+        torch.manual_seed(0)
+        visual_feature_dim = 1280 * 2
+        model = TemporalStream(input_dim=visual_feature_dim).eval()
+        dummy_input = torch.randn(2, 30, visual_feature_dim)
+        with torch.no_grad():
+            original = model(dummy_input)
+            shuffled = model(dummy_input[:, torch.randperm(dummy_input.shape[1])])
+        self.assertFalse(torch.allclose(original, shuffled, atol=1e-5))
 
     def test_multimodal_model(self):
         model = MultimodalModel(pretrained=False)

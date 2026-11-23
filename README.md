@@ -10,36 +10,35 @@
   <img src="https://img.shields.io/badge/Dataset-WildDeepfake-orange" alt="WildDeepfake"/>
 </p>
 
-**M.Eng. thesis in Software Engineering, Northwestern Polytechnical University (2027)**
+**Author:** [MD Rakibul Islam Raihan](https://github.com/theraihanrakibb)<br>
+**Supervisor:** ZHANG PENG<br>
+**University:** Northwestern Polytechnical University, School of Software Engineering
 
-[Read the thesis PDF](results/ddv_avti.pdf)
+The detector combines RGB and log-FFT features, audio features, and a position-aware Transformer. The thesis compares an initial and an improved protocol on the same held-out clips within each dataset. The 110-clip WildDeepfake collection uses a silence fallback. The 300-clip DigiFakeAV subset contains audio.
 
-**Author:** [MD Rakibul Islam Raihan](https://github.com/theraihanrakibb)
+## Verified results
 
-**Supervisor:** Professor Zhang Peng
+Each reported full experiment uses four seeds and a 20-epoch budget. Experiment 1 selects checkpoints by validation loss and uses equal ensemble weights. Experiment 2 uses pretrained initialisation, validation-AUC checkpoint selection, validation-derived cutoffs, and validation-weighted ensembling.
 
-## Research
+- **WildDeepfake:** Multimodal mean ROC AUC rose from 0.4844 to 0.8242. Ensemble mean AUC rose from 0.6641 to 0.8398.
+- **DigiFakeAV:** Multimodal mean ROC AUC rose from 0.5300 to 0.7239. Ensemble mean AUC rose from 0.6894 to 0.7189.
 
-The proposed detector assigns a fake score to each video clip. It combines frame appearance, spatial frequency features, audio descriptors, and order-independent frame context. The separate equal-weight ensemble averages the scores of the proposed detector, MesoNet, XceptionNet, and LipSyncDetector.
+The results describe the evaluated subsets. Frame shuffling preserved AUC in every improved seed on both datasets, and zeroing the DigiFakeAV audio features changed the mean AUC from 0.7239 to 0.7244. The ablation series uses separately fitted configurations.
 
-## Held-out results
+- [Named thesis PDF](results/ddv_avti.pdf)
 
-The WildDeepfake-derived collection contained 110 clips, with 77 for training, 17 for validation, and 16 for testing. The test split included eight authentic and eight manipulated clips.
+## Run the code
 
-| Detector | Correct decisions | Accuracy | ROC AUC |
-| --- | ---: | ---: | ---: |
-| Proposed multimodal detector | 8/16 | 50.00% | 0.4844 |
-| MesoNet | 9/16 | 56.25% | 0.6250 |
-| XceptionNet | 9/16 | 56.25% | 0.7969 |
-| LipSyncDetector | 7/16 | 43.75% | 0.7969 |
-| Equal-weight ensemble | 12/16 | 75.00% | 0.8281 |
+The Linux runners expect a Python environment at `.venv`, four NVIDIA GPUs, and local dataset files, split manifests, and cached pretrained weights. The full runs used PyTorch 2.7.1 with CUDA 12.6 on RTX 6000 Ada GPUs. Install the matching PyTorch wheels and the packages in [requirements.txt](requirements.txt).
 
-The proposed detector flagged every held-out clip as fake at the 0.5 cutoff. The training clips had no audio tracks. Ten publisher-provided DigiFakeAV examples were used separately to check processing of audio-bearing clips. These measurements describe the recorded split and diagnostic sample.
+The runners expect WildDeepfake data under `data/wilddeepfake/` and DigiFakeAV data under `data/digifakeav_subset/`. The data, private run logs, and model weights are kept separately. Run the two datasets in separate GPU allocations or one after the other.
 
-## Repository
+```bash
+ROOT=results/runs/wilddeepfake bash scripts/run_wilddeepfake.sh
+ROOT=results/runs/digifakeav bash scripts/run_digifakeav.sh
+bash scripts/run_unit_tests.sh
+```
 
-- [Thesis PDF](results/ddv_avti.pdf) contains the model specification, dataset split, evaluation and reproduction records.
-- [Source code](src/) contains model implementations and experiment utilities.
-- [Tests](tests/) contains unit tests and small input fixtures.
+The current runners implement the improved setup. The thesis describes the initial protocol separately. See `src/` for model and evaluation code, `scripts/` for run entry points, and `tests/` for checks.
 
-The research code is released under the [MIT license](LICENSE).
+See [CITATION.cff](CITATION.cff) and [LICENSE](LICENSE).

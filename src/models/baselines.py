@@ -1,17 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import models
-import pretrainedmodels
+import timm
+
 
 class MesoNet(nn.Module):
-    """
-    Implementation of MesoNet model for deepfake detection
-    MesoNet is a CNN architecture specifically designed to detect facial manipulations
-    at a mesoscopic level of analysis.
-    """
+    """MesoNet visual baseline that returns one logit per clip."""
+
     def __init__(self):
         super(MesoNet, self).__init__()
+        self.output_type = 'logits'
         self.conv1 = nn.Conv2d(3, 8, 3, padding=1)
         self.bn1 = nn.BatchNorm2d(8)
         self.pool1 = nn.MaxPool2d(2, 2)
@@ -26,7 +24,7 @@ class MesoNet(nn.Module):
         self.pool4 = nn.MaxPool2d(4, 4)
         self.fc1 = nn.Linear(1024, 16)
         self.fc2 = nn.Linear(16, 1)
-        
+
     def forward(self, x):
         x = self.pool1(F.relu(self.bn1(self.conv1(x))))
         x = self.pool2(F.relu(self.bn2(self.conv2(x))))
@@ -34,45 +32,44 @@ class MesoNet(nn.Module):
         x = self.pool4(F.relu(self.bn4(self.conv4(x))))
         x = x.view(x.size(0), -1)
         x = F.dropout(F.relu(self.fc1(x)), 0.5, training=self.training)
-        x = torch.sigmoid(self.fc2(x))
-        return x
-    
+        return self.fc2(x)
+
     def process_video(self, frames_batch):
         batch_size, num_frames = frames_batch.shape[:2]
         frames_reshaped = frames_batch.view(-1, *frames_batch.shape[2:])
-        if frames_reshaped.shape[2] != 256 or frames_reshaped.shape[3] != 256:
+        if frames_reshaped.shape[-2:] != (256, 256):
             frames_reshaped = F.interpolate(frames_reshaped, size=(256, 256), mode='bilinear', align_corners=False)
         frame_preds = self.forward(frames_reshaped)
-        frame_preds = frame_preds.view(batch_size, num_frames)
-        return torch.mean(frame_preds, dim=1)
+        return frame_preds.view(batch_size, num_frames, 1).mean(dim=1)
+
 
 class XceptionNet(nn.Module):
-    """
-    Implementation of XceptionNet model for deepfake detection
-    XceptionNet is commonly used as a strong visual baseline on FF++ dataset.
-    """
+    """XceptionNet visual baseline that returns one logit per clip."""
+
     def __init__(self, pretrained=True):
         super(XceptionNet, self).__init__()
-        self.xception_base = pretrainedmodels.xception(pretrained='imagenet' if pretrained else None)
-        num_features = self.xception_base.last_linear.in_features
-        self.xception_base.last_linear = nn.Linear(num_features, 1)
-        self.sigmoid = nn.Sigmoid()
-        
+        self.output_type = 'logits'
+        self.xception_base = timm.create_model('xception', pretrained=pretrained, num_classes=1)
+
     def forward(self, x):
-        features = self.xception_base(x)
-        return self.sigmoid(features)
-    
+        return self.xception_base(x)
+
     def process_video(self, video_frames):
         batch_size, num_frames = video_frames.shape[:2]
-        frames_reshaped = video_frames.view(-1, 3, video_frames.shape[3], video_frames.shape[4])
+        frames_reshaped = video_frames.view(-1, *video_frames.shape[2:])
+        if frames_reshaped.shape[-2:] != (299, 299):
+            frames_reshaped = F.interpolate(frames_reshaped, size=(299, 299), mode='bilinear', align_corners=False)
         frame_preds = self.forward(frames_reshaped)
-        frame_preds = frame_preds.view(batch_size, num_frames, -1)
-        return torch.mean(frame_preds, dim=1), frame_preds
+        frame_preds = frame_preds.view(batch_size, num_frames, 1)
+        return frame_preds.mean(dim=1), frame_preds
+
 
 class LipSyncDetector(nn.Module):
-    """Implementation of a lip-sync detection model for deepfake detection"""
+    """Audio-visual baseline that scores frames separately before temporal averaging."""
+
     def __init__(self):
         super(LipSyncDetector, self).__init__()
+        self.output_type = 'logits'
         self.visual_conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
         self.visual_conv2 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
         self.visual_conv3 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
@@ -86,7 +83,7 @@ class LipSyncDetector(nn.Module):
         self.fusion_fc2 = nn.Linear(512, 128)
         self.fusion_fc3 = nn.Linear(128, 1)
         self.dropout = nn.Dropout(0.5)
-        
+
     def forward(self, visual, audio):
         v = F.relu(self.visual_conv1(visual))
         v = self.visual_pool(v)
@@ -105,28 +102,28 @@ class LipSyncDetector(nn.Module):
         fusion = self.dropout(fusion)
         fusion = F.relu(self.fusion_fc2(fusion))
         fusion = self.dropout(fusion)
-        return torch.sigmoid(self.fusion_fc3(fusion))
-    
+        return self.fusion_fc3(fusion)
+
     def process_video(self, video_frames, audio_features):
         if video_frames.dim() != 5:
             raise ValueError("video_frames must have shape (batch, frames, channels, height, width)")
-
-        visual = video_frames.mean(dim=1)
+        batch_size, num_frames = video_frames.shape[:2]
+        visual = video_frames.view(-1, *video_frames.shape[2:])
         if visual.shape[-2:] != (256, 256):
             visual = F.interpolate(visual, size=(256, 256), mode='bilinear', align_corners=False)
 
         audio = self._prepare_audio(audio_features)
-        predictions = self.forward(visual, audio)
-        attention_weights = torch.ones(predictions.shape[0], 2, device=predictions.device)
+        audio = audio.unsqueeze(1).expand(-1, num_frames, -1, -1)
+        audio = audio.reshape(batch_size * num_frames, *audio.shape[2:])
+        frame_preds = self.forward(visual, audio)
+        predictions = frame_preds.view(batch_size, num_frames, 1).mean(dim=1)
+        attention_weights = torch.ones(batch_size, 2, device=predictions.device)
         return predictions, attention_weights
 
     def _prepare_audio(self, audio_features):
         if audio_features.dim() == 4:
             audio = audio_features.squeeze(1)
         elif audio_features.dim() == 3:
-            # Treat the longer axis as time and the shorter as features, which
-            # matches both (batch, features, time) and (batch, time, features)
-            # inputs produced by the dataset and extract_audio_features.
             if audio_features.shape[1] <= audio_features.shape[2]:
                 audio = audio_features
             else:
@@ -136,8 +133,6 @@ class LipSyncDetector(nn.Module):
         else:
             raise ValueError("audio_features must have 2, 3, or 4 dimensions")
 
-        # Project the feature dimension to the 128 channels expected by the
-        # Conv1d stack so MFCC (40), mel (128), or other inputs all work.
         if audio.shape[1] != 128:
             audio = audio.transpose(1, 2)
             audio = F.interpolate(audio, size=128, mode='linear', align_corners=False)

@@ -1,6 +1,22 @@
+import shutil
+import subprocess
+
 import numpy as np
-from moviepy import VideoFileClip
 import librosa
+
+_NO_AUDIO_VIDEOS = set()
+
+
+def _ffmpeg_executable():
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except ImportError:
+        executable = shutil.which("ffmpeg")
+        if executable:
+            return executable
+    raise RuntimeError("FFmpeg executable not found")
+
 
 def _fix_audio_length(audio, target_samples):
     if len(audio) >= target_samples:
@@ -81,22 +97,33 @@ class AudioProcessor:
         self.n_mfcc = n_mfcc
 
     def extract_audio(self, video_path):
-        """
-        Extracts audio waveform from a video file.
-        Videos without an audio track return silence so dataset loading can continue.
-        """
-        try:
-            with VideoFileClip(video_path) as clip:
-                if clip.audio is None:
-                    return np.zeros(self.target_samples, dtype=np.float32)
-                audio = clip.audio.to_soundarray(fps=self.sr)
-        except Exception as e:
-            print(f"Warning: Could not extract audio from {video_path}: {e}. Returning silence.")
+        """Decode the first five seconds of mono audio directly with FFmpeg."""
+        key = str(video_path)
+        if key in _NO_AUDIO_VIDEOS:
             return np.zeros(self.target_samples, dtype=np.float32)
 
-        audio = np.asarray(audio, dtype=np.float32)
-        if audio.ndim == 2:
-            audio = audio.mean(axis=1)
+        ffmpeg = _ffmpeg_executable()
+        command = [
+            ffmpeg, "-v", "error", "-nostdin", "-i", key,
+            "-map", "0:a:0", "-ac", "1", "-ar", str(self.sr),
+            "-f", "f32le", "-t", str(self.duration), "pipe:1",
+        ]
+        try:
+            result = subprocess.run(command, capture_output=True, check=True)
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr.decode("utf-8", "replace") if isinstance(exc.stderr, bytes) else str(exc.stderr or "")
+            if "matches no streams" in stderr or "does not contain any stream" in stderr:
+                _NO_AUDIO_VIDEOS.add(key)
+                return np.zeros(self.target_samples, dtype=np.float32)
+            print(f"Warning: Could not extract audio from {video_path}: {exc}. Returning silence.")
+            return np.zeros(self.target_samples, dtype=np.float32)
+        except OSError as exc:
+            print(f"Warning: Could not extract audio from {video_path}: {exc}. Returning silence.")
+            return np.zeros(self.target_samples, dtype=np.float32)
+
+        audio = np.frombuffer(result.stdout, dtype="<f4").astype(np.float32)
+        if not np.isfinite(audio).all():
+            raise ValueError(f"Non-finite audio samples: {video_path}")
         return _fix_audio_length(audio, self.target_samples).astype(np.float32)
 
     def to_mel_spectrogram(self, audio_waveform):

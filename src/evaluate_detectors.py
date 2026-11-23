@@ -1,15 +1,13 @@
 import os
 import torch
 import numpy as np
+import pandas as pd
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from torch.utils.data import DataLoader, Dataset
 
 # Import models
 from models.multimodal_model import MultimodalModel
 from models.baselines import MesoNet, XceptionNet, LipSyncDetector
-
-# Import advanced visualizations
-from visualizations import create_visualizations
 
 # Import media processor
 from media_processor import MediaProcessor
@@ -74,11 +72,9 @@ def evaluate_model(model, data_loader, device):
             # Handle tuple outputs
             if isinstance(outputs, tuple):
                 outputs = outputs[0]
-            
-            # Convert outputs to binary predictions
-            preds = (outputs > 0.5).float()
-            
-            # Store predictions and labels
+            outputs = torch.sigmoid(outputs)
+
+            # Store probabilities and labels
             all_scores.extend(outputs.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
     
@@ -140,7 +136,7 @@ def evaluate_on_media_files(model, media_processor, device):
                 if isinstance(outputs, tuple):
                     outputs = outputs[0]
                 
-                # Convert to binary prediction
+                outputs = torch.sigmoid(outputs)
                 pred = (outputs > 0.5).float()
                 
                 # Real videos should be classified as 0
@@ -166,7 +162,7 @@ def evaluate_on_media_files(model, media_processor, device):
                 if isinstance(outputs, tuple):
                     outputs = outputs[0]
                 
-                # Convert to binary prediction
+                outputs = torch.sigmoid(outputs)
                 pred = (outputs > 0.5).float()
                 
                 # Fake videos should be classified as 1
@@ -228,7 +224,7 @@ def main():
     # Build test dataset: use real videos when --data_dir is provided,
     # otherwise fall back to DummyDataset (random noise — smoke test only).
     if args.data_dir and os.path.isdir(args.data_dir):
-        from train import collect_video_files
+        from train_detectors import collect_video_files
         from data_loader.datasets import DeepfakeDataset
         video_files, labels = collect_video_files(args.data_dir)
         if video_files:
@@ -241,7 +237,7 @@ def main():
             test_dataset = DummyDataset(num_samples=50, num_frames=10)
     else:
         print("No --data_dir provided. Using DummyDataset (random noise — smoke test only).")
-        print("For real results: python src/evaluate.py --data_dir data/custom")
+        print("For real results: python src/evaluate_detectors.py --data_dir data/custom")
         test_dataset = DummyDataset(num_samples=50, num_frames=10)
 
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
@@ -322,21 +318,20 @@ def main():
     create_media_comparisons(media_processor)
     
     # Print results
-    print("Synthetic data evaluation results:")
+    print("Evaluation results:")
     for model_name, metrics in results.items():
         print(f"\n{model_name}:")
         for metric_name, value in metrics.items():
             print(f"  {metric_name}: {value:.4f}")
     
-    # Create visualizations
-    print("\nCreating visualizations...")
-    create_visualizations(results, predictions_dict, labels_dict)
-    print("Visualizations saved to 'results' directory")
-
-    # Save raw predictions + labels so main.py --thesis can render
-    # ROC curves and confusion matrices from real scores.
+    # Keep raw scores and labels for ROC curves and confusion matrices.
     import json
-    raw_path = os.path.join("results", "docs", "raw_predictions.json")
+    docs_dir = os.path.join("results", "docs")
+    os.makedirs(docs_dir, exist_ok=True)
+    metrics_path = os.path.join(docs_dir, "complete_performance_data.csv")
+    pd.DataFrame.from_dict(results, orient='index').rename_axis('model').to_csv(metrics_path)
+    print(f"Metrics saved to {metrics_path}")
+    raw_path = os.path.join(docs_dir, "raw_predictions.json")
     serializable_preds = {
         m: np.asarray(v).flatten().tolist() for m, v in predictions_dict.items()
     }

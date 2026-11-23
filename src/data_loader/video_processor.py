@@ -78,19 +78,18 @@ class VideoProcessor:
         cap.release()
         return frames
 
-    def crop_face(self, frame, size=(224, 224)):
-        """Crops the face from a single frame."""
-        if self.face_cascade is None:
-            return cv2.resize(frame, size)
+    def crop_face(self, frame, size=(224, 224), skip=False):
+        """Return an RGB crop; skip detection for already-cropped face clips."""
+        if skip or self.face_cascade is None:
+            return cv2.cvtColor(cv2.resize(frame, size), cv2.COLOR_BGR2RGB)
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(gray, 1.1, 4)
 
         if len(faces) > 0:
-            # Assume the largest face is the one of interest
             x, y, w, h = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
             face = frame[y:y+h, x:x+w]
-            return cv2.resize(face, size)
+            resized = cv2.resize(face, size)
         else:
-            # If no face is found, return the resized frame
-            return cv2.resize(frame, size)
+            resized = cv2.resize(frame, size)
+        return cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)

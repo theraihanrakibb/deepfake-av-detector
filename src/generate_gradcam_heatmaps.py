@@ -3,20 +3,20 @@ Grad-CAM explainability for the multimodal deepfake detection model.
 
 Implements Gradient-weighted Class Activation Mapping (Selvaraju et al., 2017)
 for the visual spatial backbone, visual frequency backbone, and audio CNN.
-This satisfies the title report §3.3.3.3 qualitative error analysis requirement:
+This supports the qualitative error analysis requirement:
 "Utilize visualization techniques like Grad-CAM for the visual streams to
 understand which regions of the face (e.g., eyes, mouth, cheeks) the model
 finds most salient for its decision."
 
 Usage:
-    from explainability import GradCAMVisualizer
+    from generate_gradcam_heatmaps import GradCAMVisualizer
 
     visualizer = GradCAMVisualizer(model, device)
     heatmaps = visualizer.generate(video, audio)
     visualizer.save_overlay(heatmaps, frame_idx=0, output_path="gradcam_frame0.png")
 
 CLI:
-    python src/explainability.py --model_path results/weights/trained_model_multimodal_best.pth \
+    python src/generate_gradcam_heatmaps.py --model_path results/weights/trained_model_multimodal_best.pth \
         --video_path path/to/video.mp4 --output_dir results/images/gradcam
 """
 
@@ -304,7 +304,7 @@ def _load_model_and_data(args, device):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Grad-CAM explainability (title report §3.3.3.3)')
+    parser = argparse.ArgumentParser(description='Grad-CAM qualitative error analysis')
     parser.add_argument('--model_path', type=str,
                        default='results/weights/trained_model_multimodal_best.pth')
     parser.add_argument('--video_path', type=str, required=True,

@@ -29,7 +29,7 @@ class TestMultimodalModelLight(unittest.TestCase):
         # The audio stream is followed by a linear layer to match the visual dim
         mock_audio_instance.return_value = torch.randn(2, audio_feature_dim)
 
-        mock_temporal_instance.return_value = torch.randn(2, visual_feature_dim)
+        mock_temporal_instance.return_value = torch.randn(2, 512)
 
         # Instantiate the model (with mocked sub-modules)
         model = MultimodalModel(audio_feature_dim=audio_feature_dim)
