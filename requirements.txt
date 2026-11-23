@@ -34,7 +34,7 @@ seaborn>=0.13.0
 moviepy>=2.0.0
 imageio-ffmpeg>=0.4
 
-# Dataset download used by scripts/download_digifakeav_subset.py
+# Optional dependency for acquiring DigiFakeAV from Hugging Face.
 huggingface_hub>=0.24
 
 # Test runner used by scripts/run_unit_tests.sh
