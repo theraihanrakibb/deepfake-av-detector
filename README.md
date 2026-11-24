@@ -32,7 +32,12 @@ The results describe the evaluated clips. Frame shuffling preserved AUC in every
 
 The Linux runners expect a Python environment at `.venv`, four NVIDIA GPUs, and local dataset files, split manifests, and cached pretrained weights. The full runs used PyTorch 2.7.1 with CUDA 12.6 on RTX 6000 Ada GPUs. Install the matching PyTorch wheels and the packages in [requirements.txt](requirements.txt).
 
-The runners expect WildDeepfake data under `data/wilddeepfake/` and DigiFakeAV data under `data/digifakeav_subset/`. The data, private run logs, and model weights are kept separately. Run the two datasets in separate GPU allocations or one after the other.
+Download the datasets separately from their publishers and prepare the local split manifests before running the experiments.
+
+- **WildDeepfake** — Download the [WildDeepfake release](https://github.com/xingjunm/wild-deepfake) and prepare `data/wilddeepfake/` with `wdf110.json` and `wdf110_split.json`.
+- **DigiFakeAV** — Download the [DigiFakeAV audio-bearing files](https://huggingface.co/datasets/cambrain/DigiFakeAV), reconstruct the clips using the publisher's instructions, and prepare `data/digifakeav_subset/` with `dfa.json` and `dfa_split.json`.
+
+Keep the datasets, split manifests, run logs, and model weights in local storage. Run the two datasets in separate GPU allocations or one after the other.
 
 ```bash
 ROOT=results/runs/wilddeepfake bash scripts/run_wilddeepfake.sh
